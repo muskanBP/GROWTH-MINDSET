@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+import plotly.express as px
 import datetime
 
 # Page Configuration
@@ -31,26 +31,44 @@ growth_steps = [
 
 expected_columns = ["Date", "Day"] + growth_steps
 
-# File Upload Feature
-st.subheader("📂 Upload Your Mindset Progress (CSV)")
-uploaded_file = st.file_uploader("Upload a CSV file", type=["csv"])
+# File Upload Feature with Multiple Formats
+st.subheader("📂 Upload Any File (CSV, Excel, JSON) and Convert to CSV")
+uploaded_file = st.file_uploader("Upload a file", type=["csv", "xlsx", "xls", "json"])
 
 if uploaded_file:
-    data = pd.read_csv(uploaded_file)
-    data.columns = [col.strip() for col in data.columns]  # Remove extra spaces from column names
+    file_extension = uploaded_file.name.split(".")[-1].lower()
+
+    try:
+        if file_extension == "csv":
+            data = pd.read_csv(uploaded_file)
+        elif file_extension in ["xlsx", "xls"]:
+            data = pd.read_excel(uploaded_file)
+        elif file_extension == "json":
+            data = pd.read_json(uploaded_file)
+        else:
+            st.error("Unsupported file format!")
+            st.stop()
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
+        st.stop()
+    
+    data.columns = [col.strip() for col in data.columns]  # Clean column names
 
     # Identify Missing Columns
     missing_cols = set(expected_columns) - set(data.columns)
     
-    # Add missing columns with default values (5 as a neutral score)
     for col in missing_cols:
         if col == "Day":
-            data[col] = pd.to_datetime(data["Date"]).dt.strftime("%A")  # Auto-fill day based on date
+            data[col] = pd.to_datetime(data["Date"]).dt.strftime("%A")
         else:
-            data[col] = 5  # Default score for missing mindset steps
+            data[col] = 5  # Default score
 
     st.session_state.data = data
-    st.success("✅ File uploaded successfully! Missing columns were added automatically.")
+    st.success("✅ File uploaded successfully!")
+
+    # Convert to CSV for download
+    csv = data.to_csv(index=False).encode("utf-8")
+    st.download_button(label="⬇️ Download as CSV", data=csv, file_name="converted_data.csv", mime="text/csv")
 else:
     if "data" not in st.session_state:
         st.session_state.data = pd.DataFrame(columns=expected_columns)
@@ -77,7 +95,7 @@ with st.form("mindset_form"):
 st.subheader("📊 Your Growth Mindset Data")
 st.dataframe(data)
 
-# Convert Data Columns to Numeric (to avoid errors)
+# Convert Data Columns to Numeric
 for step in growth_steps:
     if step in data.columns:
         data[step] = pd.to_numeric(data[step], errors="coerce")
@@ -87,16 +105,8 @@ st.subheader("📈 Mindset Progress Over Time")
 if not data.empty:
     data["Date"] = pd.to_datetime(data["Date"])
     data = data.sort_values("Date")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for step in growth_steps:
-        if step in data.columns:  # Ensure column exists before plotting
-            ax.plot(data["Date"], data[step], marker="o", label=step)
-    ax.legend()
-    ax.set_title("Mindset Growth Over Time")
-    ax.set_xlabel("Date")
-    ax.set_ylabel("Score (1-10)")
-    ax.grid()
-    st.pyplot(fig)
+    fig = px.line(data, x="Date", y=growth_steps, markers=True, title="Mindset Growth Over Time")
+    st.plotly_chart(fig)
 else:
     st.write("⚠️ No data yet. Add your first mindset assessment above!")
 
